@@ -30,27 +30,29 @@ const optionsListEl = document.getElementById("options-list");
 const macroListEl = document.getElementById("macro-list");
 const onchainListEl = document.getElementById("onchain-list");
 const vnlocalListEl = document.getElementById("vnlocal-list");
+const companyInfoEl = document.getElementById("company-info");
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const symbol = cleanText(document.getElementById("symbol").value).toUpperCase();
   const market = cleanText(document.getElementById("market").value).toUpperCase() || "AUTO";
-  const horizons = cleanText(document.getElementById("horizons").value);
+  const horizonValue = Number.parseInt(document.getElementById("horizon-value").value, 10);
+  const horizonUnit = cleanText(document.getElementById("horizon-unit").value).toLowerCase() || "d";
   const lookbackDays = Number.parseInt(document.getElementById("lookback").value, 10);
   const includeNews = document.getElementById("include-news").checked;
 
   if (!symbol) {
-    updateStatus("Can nhap ma tai san.", true);
+    updateStatus("Cần nhập mã tài sản.", true);
     return;
   }
 
-  if (!horizons) {
-    updateStatus("Can nhap it nhat 1 moc du bao (vd: 5d,1w,1m).", true);
+  if (!Number.isFinite(horizonValue) || horizonValue < 1) {
+    updateStatus("Giá trị mốc thời gian phải lớn hơn hoặc bằng 1.", true);
     return;
   }
 
-  updateStatus("Dang thu thap du lieu va phan tich...");
+  updateStatus("Đang thu thập dữ liệu và phân tích...");
   setLoadingState();
 
   try {
@@ -62,7 +64,9 @@ form.addEventListener("submit", async (event) => {
       body: JSON.stringify({
         symbol,
         market,
-        horizons,
+        horizon_value: horizonValue,
+        horizon_unit: horizonUnit,
+        horizons: `${horizonValue}${horizonUnit}`,
         lookback_days: Number.isFinite(lookbackDays) ? lookbackDays : 365,
         include_news: includeNews
       })
@@ -70,13 +74,13 @@ form.addEventListener("submit", async (event) => {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.ok === false) {
-      throw new Error(data.error || `Request loi (HTTP ${res.status}).`);
+      throw new Error(data.error || `Yêu cầu lỗi (HTTP ${res.status}).`);
     }
 
     renderDashboard(data);
-    updateStatus("Hoan tat.");
+    updateStatus("Hoàn tất.");
   } catch (error) {
-    updateStatus(error && error.message ? error.message : "Co loi khong xac dinh.", true);
+    updateStatus(error && error.message ? error.message : "Có lỗi không xác định.", true);
     renderErrorState();
   }
 });
@@ -87,7 +91,7 @@ function renderDashboard(data) {
   const analysis = data.analysis || {};
   const primary = analysis.primary || null;
   const trend = analysis.trend || {};
-  const currency = cleanText(instrument.currency || price.currency) || "USD";
+  const currency = resolveCurrency(instrument, price);
 
   instrumentNameEl.textContent = cleanText(instrument.name) || "-";
   instrumentSymbolEl.textContent = [
@@ -109,15 +113,15 @@ function renderDashboard(data) {
       primary.expected_delta,
       currency
     )} (${formatSignedPercent(primary.expected_pct)})`;
-    primaryRangeEl.textContent = `Range: ${formatCurrency(
+    primaryRangeEl.textContent = `Biên độ: ${formatCurrency(
       primary.range_low,
       currency
     )} -> ${formatCurrency(primary.range_high, currency)}`;
-    probUpEl.textContent = `Kha nang tang: ${formatPercent(primary.probability_up)}`;
+    probUpEl.textContent = `Khả năng tăng: ${formatPercent(primary.probability_up)}`;
 
     const trendText = [
       primary.signal?.label || "-",
-      trend.direction ? trend.direction.toUpperCase() : "N/A"
+      mapDirectionVi(trend.direction)
     ].join(" | ");
     trendBadgeEl.textContent = trendText;
     applySignalClass(trendBadgeEl, primary.signal?.key || "flat");
@@ -126,15 +130,16 @@ function renderDashboard(data) {
     primaryChangeEl.textContent = "-";
     primaryRangeEl.textContent = "-";
     probUpEl.textContent = "-";
-    trendBadgeEl.textContent = "Khong du du lieu";
+    trendBadgeEl.textContent = "Không đủ dữ liệu";
     applySignalClass(trendBadgeEl, "flat");
   }
 
-  trendScoreEl.textContent = `Trend score: ${formatNumber(
+  trendScoreEl.textContent = `Điểm xu hướng: ${formatNumber(
     trend.score,
     2
-  )} | strength: ${cleanText(trend.strength) || "-"}`;
+  )} | cường độ: ${mapStrengthVi(trend.strength)}`;
 
+  renderCompanyInfo(instrument, data.advanced?.fundamentals || {}, currency);
   renderProjections(analysis.projections || [], currency);
   renderIndicators(analysis.indicators || {}, currency);
   renderMultiSource(analysis.multi_source || {});
@@ -148,14 +153,33 @@ function renderDashboard(data) {
     ? data.assumptions.filter(Boolean)
     : [];
   assumptionsEl.textContent = assumptions.length
-    ? `Luu y: ${assumptions.join(" | ")}`
+    ? `Lưu ý: ${assumptions.join(" | ")}`
     : "";
+}
+
+function renderCompanyInfo(instrument, fundamentals, currency) {
+  const profile = fundamentals?.profile || {};
+  const resolvedMarket = resolveMarketCode(instrument);
+  const displayCurrency =
+    cleanText(profile.currency || instrument.currency || currency).toUpperCase() || "USD";
+  const rows = [
+    metricLine("Tên công ty", profile.name || instrument.name || "-"),
+    metricLine("Mã", instrument.symbol || instrument.requested_symbol || "-"),
+    metricLine("Sàn", instrument.exchange || profile.exchange || "-"),
+    metricLine("Thị trường", mapMarketVi(resolvedMarket)),
+    metricLine("Đơn vị tiền tệ", displayCurrency),
+    metricLine("Ngành", profile.industry || "-"),
+    metricLine("Quốc gia", profile.country || "-"),
+    metricLine("IPO", profile.ipo || "-"),
+    metricLine("Vốn hóa", formatCurrency(profile.market_cap, displayCurrency))
+  ];
+  companyInfoEl.innerHTML = rows.join("");
 }
 
 function renderProjections(projections, currency) {
   if (!Array.isArray(projections) || projections.length === 0) {
     projectionsBody.innerHTML =
-      '<tr><td colspan="6" class="empty">Khong co du lieu du bao.</td></tr>';
+      '<tr><td colspan="6" class="empty">Không có dữ liệu dự báo.</td></tr>';
     return;
   }
 
@@ -189,16 +213,16 @@ function renderIndicators(indicators, currency) {
     ["EMA20", indicators.ema20],
     ["RSI14", indicators.rsi14],
     ["MACD", indicators.macd],
-    ["MACD Signal", indicators.macd_signal],
+    ["MACD Tín hiệu", indicators.macd_signal],
     ["MACD Histogram", indicators.macd_histogram],
-    ["Bollinger Upper", indicators.bollinger_upper],
-    ["Bollinger Mid", indicators.bollinger_mid],
-    ["Bollinger Lower", indicators.bollinger_lower],
+    ["Bollinger Trên", indicators.bollinger_upper],
+    ["Bollinger Giữa", indicators.bollinger_mid],
+    ["Bollinger Dưới", indicators.bollinger_lower],
     ["ATR14", indicators.atr14],
-    ["Momentum 10", indicators.momentum10],
-    ["Volatility (Annual)", formatPercent(indicators.volatility_annual)],
-    ["Drift (Annual)", formatSignedPercent(indicators.drift_annual)],
-    ["Trend Score", formatNumber(indicators.trend_score, 4)]
+    ["Động lượng 10", indicators.momentum10],
+    ["Biến động năm", formatPercent(indicators.volatility_annual)],
+    ["Độ trôi năm", formatSignedPercent(indicators.drift_annual)],
+    ["Điểm xu hướng", formatNumber(indicators.trend_score, 4)]
   ];
 
   indicatorsBody.innerHTML = rows
@@ -221,14 +245,14 @@ function renderMultiSource(multi) {
   const signalKey = cleanText(multi?.signal?.key) || scoreToSignalKey(score);
 
   multiScoreEl.textContent = Number.isFinite(score) ? score.toFixed(3) : "-";
-  multiConfidenceEl.textContent = `Confidence: ${
+  multiConfidenceEl.textContent = `Độ tin cậy: ${
     Number.isFinite(confidence) ? `${(confidence * 100).toFixed(1)}%` : "-"
   }`;
   multiDirectionEl.textContent = [
-    direction ? direction.toUpperCase() : "SIDEWAYS",
-    cleanText(multi.strength || "-")
+    mapDirectionVi(direction),
+    mapStrengthVi(multi.strength)
   ].join(" | ");
-  multiBadgeEl.textContent = cleanText(multi?.signal?.label) || "No signal";
+  multiBadgeEl.textContent = cleanText(multi?.signal?.label) || "Không có tín hiệu";
   applySignalClass(multiBadgeEl, signalKey);
 
   const explain = Array.isArray(multi.explanation)
@@ -236,14 +260,14 @@ function renderMultiSource(multi) {
     : [];
   multiExplainEl.innerHTML = explain.length
     ? explain.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
-    : "<li>Chua co giai thich.</li>";
+    : "<li>Chưa có giải thích.</li>";
 
   const components = Array.isArray(multi.components)
     ? multi.components
     : [];
   if (components.length === 0) {
     componentsBody.innerHTML =
-      '<tr><td colspan="5" class="empty">Khong co thanh phan score.</td></tr>';
+      '<tr><td colspan="5" class="empty">Không có thành phần điểm.</td></tr>';
     return;
   }
 
@@ -276,14 +300,14 @@ function renderFundamentals(data, currency) {
   const metrics = data.metrics || {};
   const signal = data.signal || {};
   const rows = [
-    metricLine("Signal", signal.label || "No data"),
-    metricLine("Score", formatNumber(signal.score, 3)),
-    metricLine("Name", profile.name || "-"),
-    metricLine("Industry", profile.industry || "-"),
+    metricLine("Tín hiệu", signal.label || "Không có dữ liệu"),
+    metricLine("Điểm", formatNumber(signal.score, 3)),
+    metricLine("Tên", profile.name || "-"),
+    metricLine("Ngành", profile.industry || "-"),
     metricLine("PE TTM", formatNumber(metrics.pe_ttm, 2)),
     metricLine("ROE TTM", formatSignedPercent(metrics.roe_ttm)),
-    metricLine("Revenue YoY", formatSignedPercent(metrics.revenue_growth_yoy)),
-    metricLine("Debt/Equity", formatNumber(metrics.debt_to_equity, 2))
+    metricLine("Doanh thu YoY", formatSignedPercent(metrics.revenue_growth_yoy)),
+    metricLine("Nợ/Vốn chủ", formatNumber(metrics.debt_to_equity, 2))
   ];
   fundamentalListEl.innerHTML = rows.join("");
 }
@@ -291,8 +315,8 @@ function renderFundamentals(data, currency) {
 function renderOptions(data) {
   const signal = data.signal || {};
   const rows = [
-    metricLine("Signal", signal.label || "No data"),
-    metricLine("Score", formatNumber(signal.score, 3)),
+    metricLine("Tín hiệu", signal.label || "Không có dữ liệu"),
+    metricLine("Điểm", formatNumber(signal.score, 3)),
     metricLine("Put/Call OI", formatNumber(signal.put_call_ratio_oi, 3)),
     metricLine("Put/Call Volume", formatNumber(signal.put_call_ratio_volume, 3)),
     metricLine("Call OI", formatNumber(signal.call_open_interest, 0)),
@@ -305,12 +329,12 @@ function renderMacro(data) {
   const signal = data.signal || {};
   const metrics = data.metrics || {};
   const rows = [
-    metricLine("Signal", signal.label || "No data"),
-    metricLine("Score", formatNumber(signal.score, 3)),
-    metricLine("Policy Rate", formatNumber(metrics.policy_rate, 2)),
-    metricLine("Policy Delta", formatSignedNumber(metrics.policy_rate_change, 2)),
-    metricLine("Unemployment", formatNumber(metrics.unemployment_rate, 2)),
-    metricLine("Yield 10Y2Y", formatNumber(metrics.yield_spread_10y2y, 2)),
+    metricLine("Tín hiệu", signal.label || "Không có dữ liệu"),
+    metricLine("Điểm", formatNumber(signal.score, 3)),
+    metricLine("Lãi suất điều hành", formatNumber(metrics.policy_rate, 2)),
+    metricLine("Biến động lãi suất", formatSignedNumber(metrics.policy_rate_change, 2)),
+    metricLine("Thất nghiệp", formatNumber(metrics.unemployment_rate, 2)),
+    metricLine("Chênh lệch lợi suất 10Y2Y", formatNumber(metrics.yield_spread_10y2y, 2)),
     metricLine("VIX", formatNumber(metrics.vix, 2))
   ];
   macroListEl.innerHTML = rows.join("");
@@ -320,12 +344,12 @@ function renderOnchain(data) {
   const signal = data.signal || {};
   const metrics = data.metrics || {};
   const rows = [
-    metricLine("Signal", signal.label || "No data"),
-    metricLine("Score", formatNumber(signal.score, 3)),
+    metricLine("Tín hiệu", signal.label || "Không có dữ liệu"),
+    metricLine("Điểm", formatNumber(signal.score, 3)),
     metricLine("Coin", metrics.id || "-"),
-    metricLine("Rank", formatNumber(metrics.market_cap_rank, 0)),
-    metricLine("7D Change", formatSignedPercentRaw(metrics.price_change_7d_pct)),
-    metricLine("30D Change", formatSignedPercentRaw(metrics.price_change_30d_pct)),
+    metricLine("Xếp hạng", formatNumber(metrics.market_cap_rank, 0)),
+    metricLine("Thay đổi 7 ngày", formatSignedPercentRaw(metrics.price_change_7d_pct)),
+    metricLine("Thay đổi 30 ngày", formatSignedPercentRaw(metrics.price_change_30d_pct)),
     metricLine("Vol/Cap", formatNumber(metrics.volume_to_market_cap, 3))
   ];
   onchainListEl.innerHTML = rows.join("");
@@ -338,26 +362,27 @@ function renderVnLocal(data) {
   const usdVcb = data.fx?.usd_vcb || {};
 
   const rows = [
-    metricLine("Signal", signal.label || "No data"),
-    metricLine("Score", formatNumber(signal.score, 3)),
-    metricLine("SJC Gold", [gold.type_name, gold.branch_name].filter(Boolean).join(" | ") || "-"),
-    metricLine("Gold Buy", formatCurrency(gold.buy, "VND")),
-    metricLine("Gold Sell", formatCurrency(gold.sell, "VND")),
-    metricLine("Gold Spread", formatSignedPercent(gold.spread_pct)),
-    metricLine("USD VCB Buy/Sell", `${formatCurrency(usdVcb.buy, "VND")} / ${formatCurrency(usdVcb.sell, "VND")}`),
-    metricLine("USD SJC Buy/Sell", `${formatCurrency(usdSjc.buy, "VND")} / ${formatCurrency(usdSjc.sell, "VND")}`)
+    metricLine("Tín hiệu", signal.label || "Không có dữ liệu"),
+    metricLine("Điểm", formatNumber(signal.score, 3)),
+    metricLine("Vàng SJC", [gold.type_name, gold.branch_name].filter(Boolean).join(" | ") || "-"),
+    metricLine("Giá mua vàng", formatCurrency(gold.buy, "VND")),
+    metricLine("Giá bán vàng", formatCurrency(gold.sell, "VND")),
+    metricLine("Spread vàng", formatSignedPercent(gold.spread_pct)),
+    metricLine("USD VCB Mua/Bán", `${formatCurrency(usdVcb.buy, "VND")} / ${formatCurrency(usdVcb.sell, "VND")}`),
+    metricLine("USD SJC Mua/Bán", `${formatCurrency(usdSjc.buy, "VND")} / ${formatCurrency(usdSjc.sell, "VND")}`)
   ];
 
   const notes = Array.isArray(signal.notes) ? signal.notes.filter(Boolean) : [];
   if (notes.length > 0) {
-    rows.push(metricLine("Note", notes.join(" | ")));
+    rows.push(metricLine("Ghi chú", notes.join(" | ")));
   }
 
   vnlocalListEl.innerHTML = rows.join("");
 }
 
 function metricLine(label, value) {
-  return `<li><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value || "-")}</li>`;
+  const display = value === null || value === undefined || value === "" ? "-" : value;
+  return `<li><strong>${escapeHtml(label)}:</strong> ${escapeHtml(display)}</li>`;
 }
 
 function scoreToSignalKey(score) {
@@ -370,9 +395,33 @@ function scoreToSignalKey(score) {
   return "flat";
 }
 
+function mapDirectionVi(direction) {
+  const raw = cleanText(direction).toLowerCase();
+  if (raw === "bullish") return "TĂNG";
+  if (raw === "bearish") return "GIẢM";
+  return "ĐI NGANG";
+}
+
+function mapStrengthVi(strength) {
+  const raw = cleanText(strength).toLowerCase();
+  if (raw === "high") return "mạnh";
+  if (raw === "medium") return "trung bình";
+  if (raw === "low") return "thấp";
+  return "-";
+}
+
+function mapMarketVi(market) {
+  const raw = cleanText(market).toUpperCase();
+  if (raw === "VN") return "Việt Nam";
+  if (raw === "US") return "Mỹ";
+  if (raw === "FX") return "Ngoại hối";
+  if (raw === "CRYPTO") return "Tiền mã hóa";
+  return "Tự động";
+}
+
 function formatNumberSmart(name, value, currency) {
   if (name.startsWith("RSI")) return formatNumber(value, 2);
-  if (name.startsWith("Volatility") || name.startsWith("Drift")) {
+  if (name.startsWith("Biến động") || name.startsWith("Độ trôi")) {
     return formatSignedPercent(value);
   }
   if (
@@ -380,7 +429,7 @@ function formatNumberSmart(name, value, currency) {
     name.startsWith("EMA") ||
     name.startsWith("Bollinger") ||
     name.startsWith("ATR") ||
-    name.startsWith("Momentum")
+    name.startsWith("Động lượng")
   ) {
     return formatCurrency(value, currency);
   }
@@ -389,7 +438,7 @@ function formatNumberSmart(name, value, currency) {
 
 function renderReasons(reasons) {
   if (!Array.isArray(reasons) || reasons.length === 0) {
-    reasonsEl.innerHTML = "<li>Khong co ly do duoc tra ve.</li>";
+    reasonsEl.innerHTML = "<li>Không có lý do được trả về.</li>";
     return;
   }
 
@@ -400,14 +449,14 @@ function renderReasons(reasons) {
 
 function renderNews(newsItems) {
   if (!Array.isArray(newsItems) || newsItems.length === 0) {
-    newsEl.innerHTML = "<li>Khong co tin tuc bo sung.</li>";
+    newsEl.innerHTML = "<li>Không có tin tức bổ sung.</li>";
     return;
   }
 
   newsEl.innerHTML = newsItems
     .map((item) => {
-      const title = escapeHtml(item.title || item.url || "Khong tieu de");
-      const source = escapeHtml(item.source || "Unknown");
+      const title = escapeHtml(item.title || item.url || "Không tiêu đề");
+      const source = escapeHtml(item.source || "Không rõ nguồn");
       const when = escapeHtml(item.published_at || "");
       const snippet = escapeHtml(item.snippet || "");
       const url = escapeHtml(item.url || "");
@@ -448,14 +497,14 @@ function renderSources(sources) {
 
   const technical = Array.isArray(sources.technical) ? sources.technical : [];
   if (technical.length > 0) {
-    rows.push(`<li>Technical toolkit: ${escapeHtml(technical.join(", "))}</li>`);
+    rows.push(`<li>Bộ chỉ báo kỹ thuật: ${escapeHtml(technical.join(", "))}</li>`);
   }
 
-  sourcesEl.innerHTML = rows.length > 0 ? rows.join("") : "<li>Khong co nguon.</li>";
+  sourcesEl.innerHTML = rows.length > 0 ? rows.join("") : "<li>Không có nguồn.</li>";
 }
 
 function renderSourceRow(label, url) {
-  const safeLabel = escapeHtml(label || "Nguon");
+  const safeLabel = escapeHtml(label || "Nguồn");
   const safeUrl = cleanText(url);
   if (safeUrl && safeUrl.startsWith("http") && !safeUrl.includes("api_key=")) {
     return `<li><a href="${escapeHtml(
@@ -467,13 +516,13 @@ function renderSourceRow(label, url) {
 
 function renderChart(history, primary) {
   if (!Array.isArray(history) || history.length < 2) {
-    chartWrapEl.textContent = "Khong du du lieu de ve chart.";
+    chartWrapEl.textContent = "Không đủ dữ liệu để vẽ biểu đồ.";
     return;
   }
 
   const closes = history.map((p) => Number(p.close)).filter(Number.isFinite);
   if (closes.length < 2) {
-    chartWrapEl.textContent = "Khong du du lieu de ve chart.";
+    chartWrapEl.textContent = "Không đủ dữ liệu để vẽ biểu đồ.";
     return;
   }
 
@@ -522,13 +571,13 @@ function renderChart(history, primary) {
         signalKey
       )}" cx="${futureX}" cy="${futureY}" r="5"></circle>
       <text class="chart-annotation" x="${futureX - 4}" y="${futureY - 10}">${escapeHtml(
-      primary?.label || "Forecast"
+      primary?.label || "Dự báo"
     )}</text>
     `;
 
     futureLabel = `
       <text class="chart-label" x="${futureX - 34}" y="${height - 4}">${escapeHtml(
-      primary?.label || "Forecast"
+      primary?.label || "Dự báo"
     )}</text>
     `;
   }
@@ -537,7 +586,7 @@ function renderChart(history, primary) {
   const lastDate = escapeHtml(history[history.length - 1].date || "");
 
   chartWrapEl.innerHTML = `
-    <svg viewBox="0 0 ${totalWidth} ${height}" role="img" aria-label="price chart">
+    <svg viewBox="0 0 ${totalWidth} ${height}" role="img" aria-label="biểu đồ giá">
       <rect x="0" y="0" width="${totalWidth}" height="${height}" fill="transparent"></rect>
       <line class="chart-grid" x1="${leftPad}" y1="${height - 18}" x2="${totalWidth - rightPad}" y2="${height - 18}"></line>
       <line class="chart-grid" x1="${leftPad}" y1="20" x2="${totalWidth - rightPad}" y2="20"></line>
@@ -552,51 +601,53 @@ function renderChart(history, primary) {
 
 function setLoadingState() {
   projectionsBody.innerHTML =
-    '<tr><td colspan="6" class="empty">Dang tinh toan du bao...</td></tr>';
+    '<tr><td colspan="6" class="empty">Đang tính toán dự báo...</td></tr>';
   indicatorsBody.innerHTML =
-    '<tr><td colspan="2" class="empty">Dang tinh toan chi bao...</td></tr>';
+    '<tr><td colspan="2" class="empty">Đang tính toán chỉ báo...</td></tr>';
   componentsBody.innerHTML =
-    '<tr><td colspan="5" class="empty">Dang tinh multi-source score...</td></tr>';
+    '<tr><td colspan="5" class="empty">Đang tính điểm đa nguồn...</td></tr>';
   multiScoreEl.textContent = "-";
-  multiConfidenceEl.textContent = "Confidence: -";
-  multiBadgeEl.textContent = "Dang tinh toan";
+  multiConfidenceEl.textContent = "Độ tin cậy: -";
+  multiBadgeEl.textContent = "Đang tính toán";
   applySignalClass(multiBadgeEl, "flat");
   multiDirectionEl.textContent = "-";
-  multiExplainEl.innerHTML = "<li>Dang tong hop...</li>";
-  fundamentalListEl.innerHTML = "<li>Dang tai fundamentals...</li>";
-  optionsListEl.innerHTML = "<li>Dang tai options flow...</li>";
-  macroListEl.innerHTML = "<li>Dang tai macro...</li>";
-  onchainListEl.innerHTML = "<li>Dang tai on-chain...</li>";
-  vnlocalListEl.innerHTML = "<li>Dang tai VN local market...</li>";
-  chartWrapEl.textContent = "Dang ve chart...";
-  reasonsEl.innerHTML = "<li>Dang phan tich...</li>";
-  newsEl.innerHTML = "<li>Dang tai tin tuc...</li>";
-  sourcesEl.innerHTML = "<li>Dang tong hop nguon...</li>";
+  multiExplainEl.innerHTML = "<li>Đang tổng hợp...</li>";
+  fundamentalListEl.innerHTML = "<li>Đang tải dữ liệu cơ bản...</li>";
+  optionsListEl.innerHTML = "<li>Đang tải dòng tiền quyền chọn...</li>";
+  macroListEl.innerHTML = "<li>Đang tải dữ liệu vĩ mô...</li>";
+  onchainListEl.innerHTML = "<li>Đang tải on-chain...</li>";
+  vnlocalListEl.innerHTML = "<li>Đang tải thị trường nội địa VN...</li>";
+  companyInfoEl.innerHTML = "<li>Đang tải thông tin công ty...</li>";
+  chartWrapEl.textContent = "Đang vẽ biểu đồ...";
+  reasonsEl.innerHTML = "<li>Đang phân tích...</li>";
+  newsEl.innerHTML = "<li>Đang tải tin tức...</li>";
+  sourcesEl.innerHTML = "<li>Đang tổng hợp nguồn...</li>";
   assumptionsEl.textContent = "";
 }
 
 function renderErrorState() {
   projectionsBody.innerHTML =
-    '<tr><td colspan="6" class="empty">Khong lay duoc du lieu.</td></tr>';
+    '<tr><td colspan="6" class="empty">Không lấy được dữ liệu.</td></tr>';
   indicatorsBody.innerHTML =
-    '<tr><td colspan="2" class="empty">Khong lay duoc du lieu.</td></tr>';
+    '<tr><td colspan="2" class="empty">Không lấy được dữ liệu.</td></tr>';
   componentsBody.innerHTML =
-    '<tr><td colspan="5" class="empty">Khong lay duoc du lieu.</td></tr>';
+    '<tr><td colspan="5" class="empty">Không lấy được dữ liệu.</td></tr>';
   multiScoreEl.textContent = "-";
-  multiConfidenceEl.textContent = "Confidence: -";
-  multiBadgeEl.textContent = "Khong co du lieu";
+  multiConfidenceEl.textContent = "Độ tin cậy: -";
+  multiBadgeEl.textContent = "Không có dữ liệu";
   applySignalClass(multiBadgeEl, "flat");
   multiDirectionEl.textContent = "-";
-  multiExplainEl.innerHTML = "<li>Khong co du lieu.</li>";
-  fundamentalListEl.innerHTML = "<li>Khong co du lieu.</li>";
-  optionsListEl.innerHTML = "<li>Khong co du lieu.</li>";
-  macroListEl.innerHTML = "<li>Khong co du lieu.</li>";
-  onchainListEl.innerHTML = "<li>Khong co du lieu.</li>";
-  vnlocalListEl.innerHTML = "<li>Khong co du lieu.</li>";
-  chartWrapEl.textContent = "Khong the ve chart.";
-  reasonsEl.innerHTML = "<li>Khong co du lieu.</li>";
-  newsEl.innerHTML = "<li>Khong co du lieu.</li>";
-  sourcesEl.innerHTML = "<li>Khong co du lieu.</li>";
+  multiExplainEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  fundamentalListEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  optionsListEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  macroListEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  onchainListEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  vnlocalListEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  companyInfoEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  chartWrapEl.textContent = "Không thể vẽ biểu đồ.";
+  reasonsEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  newsEl.innerHTML = "<li>Không có dữ liệu.</li>";
+  sourcesEl.innerHTML = "<li>Không có dữ liệu.</li>";
 }
 
 function applySignalClass(element, signalKey) {
@@ -666,6 +717,27 @@ function formatSignedNumber(value, digits = 2) {
   if (!Number.isFinite(num)) return "-";
   const sign = num > 0 ? "+" : num < 0 ? "-" : "";
   return `${sign}${Math.abs(num).toFixed(digits)}`;
+}
+
+function resolveMarketCode(instrument) {
+  const explicit = cleanText(instrument?.market).toUpperCase();
+  if (explicit === "VN" || explicit === "US") return explicit;
+
+  const resolvedSymbol = cleanText(instrument?.symbol).toUpperCase();
+  const requestedSymbol = cleanText(instrument?.requested_symbol).toUpperCase();
+
+  if (resolvedSymbol.endsWith(".VN") || requestedSymbol.endsWith(".VN")) return "VN";
+  if (resolvedSymbol.endsWith("=X")) return "FX";
+  if (resolvedSymbol.includes("-USD")) return "CRYPTO";
+  return explicit || "AUTO";
+}
+
+function resolveCurrency(instrument, price) {
+  const explicit = cleanText(instrument?.currency || price?.currency).toUpperCase();
+  const market = resolveMarketCode(instrument);
+  if (market === "VN") return "VND";
+  if (explicit) return explicit;
+  return "USD";
 }
 
 function cleanText(value) {

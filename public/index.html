@@ -3,58 +3,66 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Neon Financial Analyzer</title>
+    <title>Phân Tích Đầu Tư Linh Hoạt</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="page">
       <section class="hero panel">
-        <p class="eyebrow">NEON QUANT LAB</p>
-        <h1>Dau tu linh hoat - Financial Trend Analyzer</h1>
+        <h1>Đầu tư linh hoạt - Công cụ phân tích xu hướng tài chính</h1>
         <p class="subtitle">
-          Phan tich gia, historical, chi bao ky thuat va du bao gia tri kha nang cao
-          nhat theo moc thoi gian tuy chon.
+          Phân tích giá, dữ liệu lịch sử, chỉ báo kỹ thuật và dự báo giá trị có khả năng
+          cao nhất theo mốc thời gian tùy chọn.
         </p>
       </section>
 
       <section class="panel">
         <form id="analyze-form" class="form-grid">
           <label class="field">
-            <span>Ma tai san</span>
+            <span>Mã tài sản</span>
             <input id="symbol" type="text" value="VNM" placeholder="VNM, AAPL, BTC-USD..." required />
           </label>
 
           <label class="field">
-            <span>Thi truong</span>
+            <span>Thị trường</span>
             <select id="market">
-              <option value="AUTO" selected>Auto detect</option>
-              <option value="VN">Viet Nam</option>
-              <option value="US">US</option>
+              <option value="AUTO" selected>Tự động nhận diện</option>
+              <option value="VN">Việt Nam</option>
+              <option value="US">Mỹ</option>
             </select>
           </label>
 
-          <label class="field field-wide">
-            <span>Moc thoi gian du bao</span>
-            <input id="horizons" type="text" value="5d,1w,1m" placeholder="5d, 2w, 1m" />
-            <small>Dinh dang: d = ngay, w = tuan, m = thang.</small>
+          <label class="field">
+            <span>Giá trị mốc thời gian</span>
+            <input id="horizon-value" type="number" min="1" max="60" value="5" />
           </label>
 
           <label class="field">
-            <span>Lookback historical (ngay)</span>
+            <span>Loại mốc thời gian</span>
+            <select id="horizon-unit">
+              <option value="d" selected>Ngày</option>
+              <option value="w">Tuần</option>
+              <option value="m">Tháng</option>
+              <option value="y">Năm</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Khoảng dữ liệu lịch sử (ngày)</span>
             <input id="lookback" type="number" min="90" max="2000" value="365" />
           </label>
 
           <label class="field check-field">
-            <span>Thong tin bo sung</span>
+            <span>Thông tin bổ sung</span>
             <label class="checkbox-label">
               <input id="include-news" type="checkbox" checked />
-              Lay them tin thi truong/chinh tri/xu huong
+              Lấy thêm tin thị trường/chính trị/xu hướng
             </label>
           </label>
 
           <div class="actions field-wide">
-            <button id="run-btn" type="submit">Phan tich ngay</button>
-            <p id="status" aria-live="polite">San sang.</p>
+            <button id="run-btn" type="submit">Phân tích ngay</button>
+            <p id="status" aria-live="polite">Sẵn sàng.</p>
           </div>
         </form>
       </section>
@@ -62,25 +70,25 @@
       <section class="panel">
         <div class="kpi-grid">
           <article class="kpi">
-            <p class="kpi-title">Tai san</p>
+            <p class="kpi-title">Tài sản</p>
             <p id="instrument-name" class="kpi-value">-</p>
             <p id="instrument-symbol" class="kpi-sub">-</p>
           </article>
 
           <article class="kpi">
-            <p class="kpi-title">Gia hien tai</p>
+            <p class="kpi-title">Giá hiện tại</p>
             <p id="last-price" class="kpi-value">-</p>
             <p id="currency-tag" class="kpi-sub">-</p>
           </article>
 
           <article class="kpi">
-            <p class="kpi-title">Xu huong chinh</p>
-            <p id="trend-badge" class="signal-pill signal-flat">Chua phan tich</p>
-            <p id="trend-score" class="kpi-sub">Trend score: -</p>
+            <p class="kpi-title">Xu hướng chính</p>
+            <p id="trend-badge" class="signal-pill signal-flat">Chưa phân tích</p>
+            <p id="trend-score" class="kpi-sub">Điểm xu hướng: -</p>
           </article>
 
           <article class="kpi">
-            <p class="kpi-title">Du bao moc dau</p>
+            <p class="kpi-title">Dự báo mốc đầu</p>
             <p id="primary-forecast" class="kpi-value">-</p>
             <p id="primary-change" class="kpi-sub">-</p>
             <p id="primary-range" class="kpi-sub">-</p>
@@ -90,24 +98,31 @@
       </section>
 
       <section class="panel">
-        <h2>Multi-Source Signal Score</h2>
+        <h2>Thông tin công ty</h2>
+        <ul id="company-info" class="list">
+          <li>Chưa có dữ liệu.</li>
+        </ul>
+      </section>
+
+      <section class="panel">
+        <h2>Điểm tín hiệu đa nguồn</h2>
         <div class="kpi-grid kpi-grid-3">
           <article class="kpi">
-            <p class="kpi-title">Tong diem da nguon</p>
+            <p class="kpi-title">Tổng điểm đa nguồn</p>
             <p id="multi-score" class="kpi-value">-</p>
-            <p id="multi-confidence" class="kpi-sub">Confidence: -</p>
+            <p id="multi-confidence" class="kpi-sub">Độ tin cậy: -</p>
           </article>
 
           <article class="kpi">
-            <p class="kpi-title">Huong tong hop</p>
-            <p id="multi-badge" class="signal-pill signal-flat">Chua phan tich</p>
+            <p class="kpi-title">Hướng tổng hợp</p>
+            <p id="multi-badge" class="signal-pill signal-flat">Chưa phân tích</p>
             <p id="multi-direction" class="kpi-sub">-</p>
           </article>
 
           <article class="kpi">
-            <p class="kpi-title">Giai thich chinh</p>
+            <p class="kpi-title">Giải thích chính</p>
             <ul id="multi-explain" class="list">
-              <li>Chua co du lieu.</li>
+              <li>Chưa có dữ liệu.</li>
             </ul>
           </article>
         </div>
@@ -116,16 +131,16 @@
           <table id="components-table">
             <thead>
               <tr>
-                <th>Thanh phan</th>
-                <th>Score</th>
-                <th>Weight</th>
-                <th>Dong gop</th>
-                <th>Raw</th>
+                <th>Thành phần</th>
+                <th>Điểm</th>
+                <th>Trọng số</th>
+                <th>Đóng góp</th>
+                <th>Giá trị gốc</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td colspan="5" class="empty">Chua co du lieu.</td>
+                <td colspan="5" class="empty">Chưa có dữ liệu.</td>
               </tr>
             </tbody>
           </table>
@@ -134,63 +149,63 @@
 
       <section class="panel premium-grid">
         <article class="kpi">
-          <p class="kpi-title">Fundamentals</p>
+          <p class="kpi-title">Cơ bản doanh nghiệp</p>
           <ul id="fundamental-list" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </article>
 
         <article class="kpi">
-          <p class="kpi-title">Options Flow</p>
+          <p class="kpi-title">Dòng tiền quyền chọn</p>
           <ul id="options-list" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </article>
 
         <article class="kpi">
-          <p class="kpi-title">Macro Regime</p>
+          <p class="kpi-title">Vĩ mô</p>
           <ul id="macro-list" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </article>
 
         <article class="kpi">
-          <p class="kpi-title">On-chain Snapshot</p>
+          <p class="kpi-title">Chỉ số On-chain</p>
           <ul id="onchain-list" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </article>
 
         <article class="kpi">
-          <p class="kpi-title">VN Local Market</p>
+          <p class="kpi-title">Thị trường nội địa VN</p>
           <ul id="vnlocal-list" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </article>
       </section>
 
       <section class="panel">
-        <h2>Chart gia + diem du bao</h2>
-        <div id="chart-wrap" class="chart-wrap">Dang cho du lieu...</div>
+        <h2>Biểu đồ giá + điểm dự báo</h2>
+        <div id="chart-wrap" class="chart-wrap">Đang chờ dữ liệu...</div>
       </section>
 
       <section class="panel">
-        <h2>Bang du bao theo moc thoi gian</h2>
+        <h2>Bảng dự báo theo mốc thời gian</h2>
         <div class="table-wrap">
           <table id="projections-table">
             <thead>
               <tr>
-                <th>Moc</th>
-                <th>Gia kha nang cao</th>
-                <th>Bien dong</th>
-                <th>Kha nang tang</th>
-                <th>Khoang dao dong</th>
-                <th>Loai xu huong</th>
+                <th>Mốc</th>
+                <th>Giá khả năng cao</th>
+                <th>Biến động</th>
+                <th>Khả năng tăng</th>
+                <th>Khoảng dao động</th>
+                <th>Loại xu hướng</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td colspan="6" class="empty">Nhap ma tai san de bat dau.</td>
+                <td colspan="6" class="empty">Nhập mã tài sản để bắt đầu.</td>
               </tr>
             </tbody>
           </table>
@@ -198,18 +213,18 @@
       </section>
 
       <section class="panel">
-        <h2>Chi bao ky thuat</h2>
+        <h2>Chỉ báo kỹ thuật</h2>
         <div class="table-wrap">
           <table id="indicators-table">
             <thead>
               <tr>
-                <th>Chi bao</th>
-                <th>Gia tri</th>
+                <th>Chỉ báo</th>
+                <th>Giá trị</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td colspan="2" class="empty">Chua co du lieu.</td>
+                <td colspan="2" class="empty">Chưa có dữ liệu.</td>
               </tr>
             </tbody>
           </table>
@@ -218,23 +233,23 @@
 
       <section class="panel split">
         <div>
-          <h2>Ly do xu huong</h2>
+          <h2>Lý do xu hướng</h2>
           <ul id="trend-reasons" class="list">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ul>
         </div>
         <div>
-          <h2>Tin thi truong/chinh tri</h2>
+          <h2>Tin thị trường/chính trị</h2>
           <ol id="news-list" class="list numbered">
-            <li>Chua co du lieu.</li>
+            <li>Chưa có dữ liệu.</li>
           </ol>
         </div>
       </section>
 
       <section class="panel">
-        <h2>Nguon du lieu va ghi chu</h2>
+        <h2>Nguồn dữ liệu và ghi chú</h2>
         <ul id="source-list" class="list">
-          <li>Chua co du lieu.</li>
+          <li>Chưa có dữ liệu.</li>
         </ul>
         <p id="assumptions" class="assumptions"></p>
       </section>

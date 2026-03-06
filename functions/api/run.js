@@ -2,11 +2,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-9;
 
 const SIGNAL_META = {
-  "strong-up": { label: "Tang manh", color: "purple" },
-  "mild-up": { label: "Tang nhe", color: "green" },
-  flat: { label: "Di ngang", color: "yellow" },
-  "mild-down": { label: "Giam nhe", color: "red" },
-  "strong-down": { label: "Giam manh", color: "teal" }
+  "strong-up": { label: "Tăng mạnh", color: "purple" },
+  "mild-up": { label: "Tăng nhẹ", color: "green" },
+  flat: { label: "Đi ngang", color: "yellow" },
+  "mild-down": { label: "Giảm nhẹ", color: "red" },
+  "strong-down": { label: "Giảm mạnh", color: "teal" }
 };
 
 const POSITIVE_NEWS_WORDS = [
@@ -253,10 +253,20 @@ function buildSymbolCandidates(symbol, market) {
   } else if (market === "US") {
     out.add(base);
   } else {
-    out.add(base);
-    out.add(`${base}.VN`);
+    if (isLikelyVietnamTicker(base)) {
+      out.add(`${base}.VN`);
+      out.add(base);
+    } else {
+      out.add(base);
+      out.add(`${base}.VN`);
+    }
   }
   return Array.from(out);
+}
+
+function isLikelyVietnamTicker(symbol) {
+  const raw = cleanString(symbol).toUpperCase();
+  return /^[A-Z]{3,4}$/.test(raw);
 }
 
 async function fetchYahooHistory(symbol, lookbackDays) {
@@ -483,18 +493,18 @@ function summarizeTrend(indicators, projection, lastPrice) {
   const reasons = [];
 
   if (Number.isFinite(indicators.sma20) && Number.isFinite(indicators.sma50)) {
-    reasons.push(indicators.sma20 >= indicators.sma50 ? "SMA20 dang tren SMA50." : "SMA20 dang duoi SMA50.");
+    reasons.push(indicators.sma20 >= indicators.sma50 ? "SMA20 đang trên SMA50." : "SMA20 đang dưới SMA50.");
   }
   if (Number.isFinite(indicators.rsi14)) {
-    if (indicators.rsi14 >= 70) reasons.push("RSI14 trong vung qua mua.");
-    else if (indicators.rsi14 <= 30) reasons.push("RSI14 trong vung qua ban.");
-    else reasons.push("RSI14 trung tinh.");
+    if (indicators.rsi14 >= 70) reasons.push("RSI14 trong vùng quá mua.");
+    else if (indicators.rsi14 <= 30) reasons.push("RSI14 trong vùng quá bán.");
+    else reasons.push("RSI14 trung tính.");
   }
   if (Number.isFinite(indicators.macd_histogram)) {
-    reasons.push(indicators.macd_histogram >= 0 ? "MACD histogram duong." : "MACD histogram am.");
+    reasons.push(indicators.macd_histogram >= 0 ? "MACD histogram dương." : "MACD histogram âm.");
   }
   if (projection) {
-    reasons.push(`Du bao ${projection.label}: ${round(projection.expected_pct * 100, 2)}%.`);
+    reasons.push(`Dự báo ${projection.label}: ${round(projection.expected_pct * 100, 2)}%.`);
   }
 
   return {
@@ -725,7 +735,7 @@ function scoreNewsSentiment(items) {
     return {
       available: false,
       score: null,
-      label: "No news",
+      label: "Không có tin",
       positive_hits: 0,
       negative_hits: 0,
       confidence: 0,
@@ -752,7 +762,7 @@ function scoreNewsSentiment(items) {
   return {
     available: true,
     score: round(score, 6),
-    label: score > 0.2 ? "Positive" : score < -0.2 ? "Negative" : "Neutral",
+    label: score > 0.2 ? "Tích cực" : score < -0.2 ? "Tiêu cực" : "Trung tính",
     positive_hits: positiveHits,
     negative_hits: negativeHits,
     confidence: round(clamp(items.length / 12, 0.15, 1), 4),
@@ -897,7 +907,7 @@ function scoreFundamentals(metrics) {
   return {
     available: used > 0,
     score: used > 0 ? round(score, 6) : null,
-    label: used === 0 ? "No data" : score > 0.2 ? "Positive" : score < -0.2 ? "Negative" : "Neutral",
+    label: used === 0 ? "Không có dữ liệu" : score > 0.2 ? "Tích cực" : score < -0.2 ? "Tiêu cực" : "Trung tính",
     metrics_used: used,
     reasons: reasons.slice(0, 6)
   };
@@ -907,7 +917,7 @@ async function fetchOptionsSignal({ symbol, resolvedSymbol, env }) {
   if (!env.POLYGON_API_KEY) {
     return {
       available: false,
-      signal: { score: null, label: "No data", put_call_ratio_oi: null, put_call_ratio_volume: null },
+      signal: { score: null, label: "Không có dữ liệu", put_call_ratio_oi: null, put_call_ratio_volume: null },
       notes: ["Thieu POLYGON_API_KEY nen bo qua option flow."],
       sources: []
     };
@@ -917,7 +927,7 @@ async function fetchOptionsSignal({ symbol, resolvedSymbol, env }) {
   if (!/^[A-Z]{1,6}$/.test(underlying)) {
     return {
       available: false,
-      signal: { score: null, label: "Unsupported" },
+      signal: { score: null, label: "Không hỗ trợ" },
       notes: ["Option flow hien uu tien ticker US."],
       sources: []
     };
@@ -931,7 +941,7 @@ async function fetchOptionsSignal({ symbol, resolvedSymbol, env }) {
   if (!res.ok) {
     return {
       available: false,
-      signal: { score: null, label: "No data" },
+      signal: { score: null, label: "Không có dữ liệu" },
       notes: [`Polygon option snapshot HTTP ${res.status}.`],
       sources: []
     };
@@ -942,7 +952,7 @@ async function fetchOptionsSignal({ symbol, resolvedSymbol, env }) {
   if (list.length === 0) {
     return {
       available: false,
-      signal: { score: null, label: "No data" },
+      signal: { score: null, label: "Không có dữ liệu" },
       notes: ["Polygon khong tra ve option chain."],
       sources: []
     };
@@ -983,7 +993,7 @@ async function fetchOptionsSignal({ symbol, resolvedSymbol, env }) {
     available: true,
     signal: {
       score: round(clamp(score, -1, 1), 6),
-      label: score > 0.2 ? "Bullish" : score < -0.2 ? "Bearish" : "Neutral",
+      label: score > 0.2 ? "Tăng" : score < -0.2 ? "Giảm" : "Trung tính",
       put_call_ratio_oi: round(oiRatio, 6),
       put_call_ratio_volume: round(volRatio, 6),
       call_open_interest: round(callOI, 2),
@@ -1000,7 +1010,7 @@ async function fetchMacroSignal({ market, env }) {
   if (!env.FRED_API_KEY) {
     return {
       available: false,
-      signal: { score: null, label: "No data" },
+      signal: { score: null, label: "Không có dữ liệu" },
       metrics: {},
       notes: ["Thieu FRED_API_KEY nen bo qua macro model."],
       sources: []
@@ -1049,7 +1059,7 @@ async function fetchMacroSignal({ market, env }) {
     available: true,
     signal: {
       score: round(clamp(score, -1, 1), 6),
-      label: score > 0.15 ? "Risk-on" : score < -0.15 ? "Risk-off" : "Neutral"
+      label: score > 0.15 ? "Ưa rủi ro" : score < -0.15 ? "Né rủi ro" : "Trung tính"
     },
     metrics,
     market_scope: market === "VN" ? "Global macro proxy (US-led)" : "US macro regime",
@@ -1086,7 +1096,7 @@ async function fetchOnChainSignal({ symbol }) {
   if (detectAssetType(symbol) !== "crypto") {
     return {
       available: false,
-      signal: { score: null, label: "Not crypto" },
+      signal: { score: null, label: "Không phải crypto" },
       metrics: {},
       notes: ["On-chain snapshot chi ap dung cho crypto."],
       sources: []
@@ -1097,7 +1107,7 @@ async function fetchOnChainSignal({ symbol }) {
   if (!coinId) {
     return {
       available: false,
-      signal: { score: null, label: "Unsupported" },
+      signal: { score: null, label: "Không hỗ trợ" },
       metrics: {},
       notes: ["Chua map duoc ma crypto sang Coingecko id."],
       sources: []
@@ -1113,7 +1123,7 @@ async function fetchOnChainSignal({ symbol }) {
   if (!res.ok) {
     return {
       available: false,
-      signal: { score: null, label: "No data" },
+      signal: { score: null, label: "Không có dữ liệu" },
       metrics: {},
       notes: [`Coingecko HTTP ${res.status}.`],
       sources: []
@@ -1125,7 +1135,7 @@ async function fetchOnChainSignal({ symbol }) {
   if (!row) {
     return {
       available: false,
-      signal: { score: null, label: "No data" },
+      signal: { score: null, label: "Không có dữ liệu" },
       metrics: {},
       notes: ["Coingecko khong tra ve du lieu coin."],
       sources: []
@@ -1164,17 +1174,17 @@ async function fetchOnChainSignal({ symbol }) {
 
   return {
     available: true,
-    signal: { score: round(clamp(score, -1, 1), 6), label: score > 0.2 ? "Positive" : score < -0.2 ? "Negative" : "Neutral" },
+    signal: { score: round(clamp(score, -1, 1), 6), label: score > 0.2 ? "Tích cực" : score < -0.2 ? "Tiêu cực" : "Trung tính" },
     metrics,
     notes: [],
     sources: [{ provider: "Coingecko markets", symbol: coinId, url: "https://www.coingecko.com/en/api/documentation" }]
   };
 }
 
-function emptyVietnamLocalMarket(note = "Khong co du lieu VN local.") {
+function emptyVietnamLocalMarket(note = "Không có dữ liệu VN local.") {
   return {
     available: false,
-    signal: { score: null, label: "No data" },
+    signal: { score: null, label: "Không có dữ liệu" },
     gold: {},
     fx: {},
     notes: [note],
@@ -1383,7 +1393,7 @@ function scoreVietnamLocalMarket({ gold, usdSjc, usdVcb }) {
   const normalized = clamp(score, -1, 1);
   return {
     score: round(normalized, 6),
-    label: normalized > 0.15 ? "Stable-positive" : normalized < -0.15 ? "Risk-pressured" : "Neutral",
+    label: normalized > 0.15 ? "Ổn định tích cực" : normalized < -0.15 ? "Áp lực rủi ro" : "Trung tính",
     notes
   };
 }
@@ -1410,14 +1420,14 @@ function buildMultiSourceScore({
   const technicalScore = clamp((toNum(indicators.trend_score) || 0) / 4, -1, 1);
   const projectionScore = Number.isFinite(primaryProjection?.expected_pct) ? clamp(primaryProjection.expected_pct / 0.07, -1, 1) : null;
 
-  components.push(componentNode("technical", "Technical", technicalScore, indicators.trend_score));
-  components.push(componentNode("projection", "Projection", projectionScore, primaryProjection?.expected_pct));
-  components.push(componentNode("news", "News sentiment", newsSentiment?.available ? toNum(newsSentiment.score) : null, newsSentiment?.label));
-  components.push(componentNode("fundamentals", "Fundamentals", fundamentals?.signal?.available ? toNum(fundamentals.signal.score) : null, fundamentals?.signal?.label));
-  components.push(componentNode("options", "Options flow", options?.available ? toNum(options.signal?.score) : null, options?.signal?.label));
-  components.push(componentNode("macro", "Macro regime", macro?.available ? toNum(macro.signal?.score) : null, macro?.signal?.label));
+  components.push(componentNode("technical", "Kỹ thuật", technicalScore, indicators.trend_score));
+  components.push(componentNode("projection", "Dự báo", projectionScore, primaryProjection?.expected_pct));
+  components.push(componentNode("news", "Tin tức", newsSentiment?.available ? toNum(newsSentiment.score) : null, newsSentiment?.label));
+  components.push(componentNode("fundamentals", "Cơ bản doanh nghiệp", fundamentals?.signal?.available ? toNum(fundamentals.signal.score) : null, fundamentals?.signal?.label));
+  components.push(componentNode("options", "Dòng tiền quyền chọn", options?.available ? toNum(options.signal?.score) : null, options?.signal?.label));
+  components.push(componentNode("macro", "Vĩ mô", macro?.available ? toNum(macro.signal?.score) : null, macro?.signal?.label));
   components.push(componentNode("on_chain", "On-chain", onChain?.available ? toNum(onChain.signal?.score) : null, onChain?.signal?.label));
-  components.push(componentNode("vn_local", "VN local market", vietnamLocal?.available ? toNum(vietnamLocal.signal?.score) : null, vietnamLocal?.signal?.label));
+  components.push(componentNode("vn_local", "Thị trường nội địa VN", vietnamLocal?.available ? toNum(vietnamLocal.signal?.score) : null, vietnamLocal?.signal?.label));
 
   let weighted = 0;
   let totalWeight = 0;
@@ -1450,7 +1460,9 @@ function buildMultiSourceScore({
     strength: Math.abs(normalized) >= 0.5 ? "high" : Math.abs(normalized) >= 0.25 ? "medium" : "low",
     signal: signalFromPct(normalized * 0.1),
     components,
-    explanation: sorted.slice(0, 3).map((x) => `${x.label} ${x.contribution >= 0 ? "ho tro tang" : "keo giam"} (${round(x.contribution, 4)}).`)
+    explanation: sorted
+      .slice(0, 3)
+      .map((x) => `${x.label} ${x.contribution >= 0 ? "hỗ trợ tăng" : "kéo giảm"} (${round(x.contribution, 4)}).`)
   };
 }
 
@@ -1476,13 +1488,13 @@ function parseHorizonList(rawHorizons, horizonValue, horizonUnit) {
   if (tokens.length === 0 && Number.isFinite(Number(horizonValue))) {
     tokens.push(`${Number(horizonValue)}${unitChar(horizonUnit)}`);
   }
-  if (tokens.length === 0) tokens.push("5d", "1w", "1m");
+  if (tokens.length === 0) tokens.push("5d");
 
   const out = [];
   const dedup = new Set();
 
   for (const token of tokens) {
-    const m = cleanString(token).toLowerCase().match(/^(\d{1,3})\s*([dwm])$/);
+    const m = cleanString(token).toLowerCase().match(/^(\d{1,3})\s*([dwmy])$/);
     if (!m) continue;
     const value = clampInt(m[1], 1, 260, 1);
     const unit = m[2];
@@ -1493,23 +1505,34 @@ function parseHorizonList(rawHorizons, horizonValue, horizonUnit) {
     if (out.length >= 8) break;
   }
 
-  return out.length > 0 ? out : [toHorizon(5, "d"), toHorizon(1, "w"), toHorizon(1, "m")];
+  return out.length > 0 ? out : [toHorizon(5, "d")];
 }
 
 function toHorizon(value, unit) {
   const u = unitChar(unit);
+  const tradingDays =
+    u === "d" ? value : u === "w" ? value * 5 : u === "m" ? value * 21 : value * 252;
+  const text =
+    u === "d"
+      ? `${value} ngày`
+      : u === "w"
+      ? `${value} tuần`
+      : u === "m"
+      ? `${value} tháng`
+      : `${value} năm`;
   return {
     value,
     unit: u,
     label: `${value}${u.toUpperCase()}`,
-    tradingDays: u === "d" ? value : u === "w" ? value * 5 : value * 21,
-    text: u === "d" ? `${value} ngay` : u === "w" ? `${value} tuan` : `${value} thang`
+    tradingDays,
+    text
   };
 }
 
 function unitChar(value) {
   const x = cleanString(String(value || "")).toLowerCase();
   if (x.startsWith("w") || x.startsWith("t")) return "w";
+  if (x.startsWith("y") || x.startsWith("n")) return "y";
   if (x.startsWith("m")) return "m";
   return "d";
 }
