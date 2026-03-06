@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Neon Financial Analyzer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero panel">
+        <p class="eyebrow">NEON QUANT LAB</p>
+        <h1>Dau tu linh hoat - Financial Trend Analyzer</h1>
+        <p class="subtitle">
+          Phan tich gia, historical, chi bao ky thuat va du bao gia tri kha nang cao
+          nhat theo moc thoi gian tuy chon.
+        </p>
+      </section>
+
+      <section class="panel">
+        <form id="analyze-form" class="form-grid">
+          <label class="field">
+            <span>Ma tai san</span>
+            <input id="symbol" type="text" value="VNM" placeholder="VNM, AAPL, BTC-USD..." required />
+          </label>
+
+          <label class="field">
+            <span>Thi truong</span>
+            <select id="market">
+              <option value="AUTO" selected>Auto detect</option>
+              <option value="VN">Viet Nam</option>
+              <option value="US">US</option>
+            </select>
+          </label>
+
+          <label class="field field-wide">
+            <span>Moc thoi gian du bao</span>
+            <input id="horizons" type="text" value="5d,1w,1m" placeholder="5d, 2w, 1m" />
+            <small>Dinh dang: d = ngay, w = tuan, m = thang.</small>
+          </label>
+
+          <label class="field">
+            <span>Lookback historical (ngay)</span>
+            <input id="lookback" type="number" min="90" max="2000" value="365" />
+          </label>
+
+          <label class="field check-field">
+            <span>Thong tin bo sung</span>
+            <label class="checkbox-label">
+              <input id="include-news" type="checkbox" checked />
+              Lay them tin thi truong/chinh tri/xu huong
+            </label>
+          </label>
+
+          <div class="actions field-wide">
+            <button id="run-btn" type="submit">Phan tich ngay</button>
+            <p id="status" aria-live="polite">San sang.</p>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="kpi-grid">
+          <article class="kpi">
+            <p class="kpi-title">Tai san</p>
+            <p id="instrument-name" class="kpi-value">-</p>
+            <p id="instrument-symbol" class="kpi-sub">-</p>
+          </article>
+
+          <article class="kpi">
+            <p class="kpi-title">Gia hien tai</p>
+            <p id="last-price" class="kpi-value">-</p>
+            <p id="currency-tag" class="kpi-sub">-</p>
+          </article>
+
+          <article class="kpi">
+            <p class="kpi-title">Xu huong chinh</p>
+            <p id="trend-badge" class="signal-pill signal-flat">Chua phan tich</p>
+            <p id="trend-score" class="kpi-sub">Trend score: -</p>
+          </article>
+
+          <article class="kpi">
+            <p class="kpi-title">Du bao moc dau</p>
+            <p id="primary-forecast" class="kpi-value">-</p>
+            <p id="primary-change" class="kpi-sub">-</p>
+            <p id="primary-range" class="kpi-sub">-</p>
+            <p id="prob-up" class="kpi-sub">-</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Multi-Source Signal Score</h2>
+        <div class="kpi-grid kpi-grid-3">
+          <article class="kpi">
+            <p class="kpi-title">Tong diem da nguon</p>
+            <p id="multi-score" class="kpi-value">-</p>
+            <p id="multi-confidence" class="kpi-sub">Confidence: -</p>
+          </article>
+
+          <article class="kpi">
+            <p class="kpi-title">Huong tong hop</p>
+            <p id="multi-badge" class="signal-pill signal-flat">Chua phan tich</p>
+            <p id="multi-direction" class="kpi-sub">-</p>
+          </article>
+
+          <article class="kpi">
+            <p class="kpi-title">Giai thich chinh</p>
+            <ul id="multi-explain" class="list">
+              <li>Chua co du lieu.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="table-wrap">
+          <table id="components-table">
+            <thead>
+              <tr>
+                <th>Thanh phan</th>
+                <th>Score</th>
+                <th>Weight</th>
+                <th>Dong gop</th>
+                <th>Raw</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="5" class="empty">Chua co du lieu.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel premium-grid">
+        <article class="kpi">
+          <p class="kpi-title">Fundamentals</p>
+          <ul id="fundamental-list" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </article>
+
+        <article class="kpi">
+          <p class="kpi-title">Options Flow</p>
+          <ul id="options-list" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </article>
+
+        <article class="kpi">
+          <p class="kpi-title">Macro Regime</p>
+          <ul id="macro-list" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </article>
+
+        <article class="kpi">
+          <p class="kpi-title">On-chain Snapshot</p>
+          <ul id="onchain-list" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </article>
+
+        <article class="kpi">
+          <p class="kpi-title">VN Local Market</p>
+          <ul id="vnlocal-list" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="panel">
+        <h2>Chart gia + diem du bao</h2>
+        <div id="chart-wrap" class="chart-wrap">Dang cho du lieu...</div>
+      </section>
+
+      <section class="panel">
+        <h2>Bang du bao theo moc thoi gian</h2>
+        <div class="table-wrap">
+          <table id="projections-table">
+            <thead>
+              <tr>
+                <th>Moc</th>
+                <th>Gia kha nang cao</th>
+                <th>Bien dong</th>
+                <th>Kha nang tang</th>
+                <th>Khoang dao dong</th>
+                <th>Loai xu huong</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="6" class="empty">Nhap ma tai san de bat dau.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Chi bao ky thuat</h2>
+        <div class="table-wrap">
+          <table id="indicators-table">
+            <thead>
+              <tr>
+                <th>Chi bao</th>
+                <th>Gia tri</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="2" class="empty">Chua co du lieu.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel split">
+        <div>
+          <h2>Ly do xu huong</h2>
+          <ul id="trend-reasons" class="list">
+            <li>Chua co du lieu.</li>
+          </ul>
+        </div>
+        <div>
+          <h2>Tin thi truong/chinh tri</h2>
+          <ol id="news-list" class="list numbered">
+            <li>Chua co du lieu.</li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Nguon du lieu va ghi chu</h2>
+        <ul id="source-list" class="list">
+          <li>Chua co du lieu.</li>
+        </ul>
+        <p id="assumptions" class="assumptions"></p>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
