@@ -186,6 +186,25 @@ async function fetchPriceBundle({ symbol, market, lookbackDays, env }) {
   const candidates = buildSymbolCandidates(symbol, market);
   const notes = [];
 
+  if (market === "VN") {
+    const vn = await fetchVciVietnamHistory({ symbol, lookbackDays });
+    if (vn && vn.history.length >= 40) {
+      notes.push("Dang dung du lieu gia VN tu Vietcap.");
+      return {
+        ...vn,
+        notes,
+        sources: [
+          {
+            provider: "Vietcap OHLC API",
+            symbol: vn.resolvedSymbol,
+            url: "https://trading.vietcap.com.vn/"
+          }
+        ]
+      };
+    }
+    notes.push("Vietcap khong tra ve du lieu lich su hop le.");
+  }
+
   for (const candidate of candidates) {
     const yahoo = await fetchYahooHistory(candidate, lookbackDays);
     if (yahoo && yahoo.history.length >= 40) {
@@ -257,6 +276,132 @@ async function fetchPriceBundle({ symbol, market, lookbackDays, env }) {
 
   notes.push("Khong tim thay kenh gia du phong hop le.");
   return { history: [], notes, sources: [] };
+}
+
+function buildVciHeaders() {
+  return {
+    Accept: "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9,vi-VN;q=0.8,vi;q=0.7",
+    "Content-Type": "application/json",
+    Referer: "https://trading.vietcap.com.vn/",
+    Origin: "https://trading.vietcap.com.vn",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+    "Sec-Fetch-Site": "same-site",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Dest": "empty"
+  };
+}
+
+function mapVciBoard(board) {
+  const raw = cleanString(board).toUpperCase();
+  if (raw === "HSX") return "HOSE";
+  if (raw === "HNX") return "HNX";
+  if (raw === "UPCOM") return "UPCOM";
+  return raw || "";
+}
+
+async function fetchVciVietnamSymbolMeta(ticker) {
+  const url = "https://trading.vietcap.com.vn/api/price/symbols/getAll";
+  const res = await fetchWithTimeout(
+    url,
+    { method: "GET", headers: buildVciHeaders() },
+    22000
+  );
+  if (!res.ok) return null;
+
+  const list = await res.json().catch(() => []);
+  if (!Array.isArray(list)) return null;
+
+  const found = list.find(
+    (item) => cleanString(item.symbol).toUpperCase() === ticker
+  );
+  if (!found) return null;
+
+  return {
+    name:
+      cleanString(found.organName) ||
+      cleanString(found.organShortName) ||
+      cleanString(found.enOrganName) ||
+      ticker,
+    exchange: mapVciBoard(found.board)
+  };
+}
+
+async function fetchVciVietnamHistory({ symbol, lookbackDays }) {
+  const ticker = baseSymbol(symbol);
+  if (!/^[A-Z]{1,8}$/.test(ticker)) return null;
+
+  const url = "https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart";
+  const payload = {
+    timeFrame: "ONE_DAY",
+    symbols: [ticker],
+    to: Math.floor(Date.now() / 1000),
+    countBack: clampInt(Math.ceil(lookbackDays * 1.8), 120, 3200, 500)
+  };
+
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: buildVciHeaders(),
+      body: JSON.stringify(payload)
+    },
+    22000
+  );
+  if (!res.ok) return null;
+
+  const data = await res.json().catch(() => null);
+  const root = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+    ? data.data
+    : [];
+  const row = root[0];
+  const tsArr = Array.isArray(row?.t) ? row.t : [];
+  const oArr = Array.isArray(row?.o) ? row.o : [];
+  const hArr = Array.isArray(row?.h) ? row.h : [];
+  const lArr = Array.isArray(row?.l) ? row.l : [];
+  const cArr = Array.isArray(row?.c) ? row.c : [];
+  const vArr = Array.isArray(row?.v) ? row.v : [];
+  if (tsArr.length < 2 || cArr.length < 2) return null;
+
+  const minTs = Date.now() - lookbackDays * DAY_MS;
+  const history = [];
+
+  for (let i = 0; i < tsArr.length; i += 1) {
+    const tsMs = Number(tsArr[i]) * 1000;
+    if (!Number.isFinite(tsMs) || tsMs < minTs) continue;
+
+    const close = toNum(cArr[i]);
+    if (!Number.isFinite(close) || close <= 0) continue;
+
+    history.push({
+      date: new Date(tsMs).toISOString().slice(0, 10),
+      open: finiteOr(oArr[i], close),
+      high: finiteOr(hArr[i], close),
+      low: finiteOr(lArr[i], close),
+      close,
+      volume: finiteOr(vArr[i], 0)
+    });
+  }
+
+  history.sort((a, b) => a.date.localeCompare(b.date));
+  if (history.length < 2) return null;
+
+  const meta = await fetchVciVietnamSymbolMeta(ticker).catch(() => null);
+  const last = history[history.length - 1];
+  const resolvedSymbol =
+    cleanString(meta?.exchange) === "HNX" ? `${ticker}.HN` : `${ticker}.VN`;
+
+  return {
+    resolvedSymbol,
+    name: cleanString(meta?.name) || ticker,
+    exchange: cleanString(meta?.exchange) || "",
+    currency: "VND",
+    lastPrice: last.close,
+    asOf: `${last.date}T00:00:00.000Z`,
+    history
+  };
 }
 
 function buildSymbolCandidates(symbol, market) {
