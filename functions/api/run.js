@@ -27,6 +27,11 @@ const WEIGHT_CONFIG = {
   vn_local: 0.06
 };
 
+const VN_COMPANY_FALLBACK = {
+  VNM: { name: "Công ty Cổ phần Sữa Việt Nam (Vinamilk)", exchange: "HOSE" },
+  VIC: { name: "Tập đoàn Vingroup - Công ty Cổ phần", exchange: "HOSE" }
+};
+
 export async function onRequestPost({ request, env }) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -40,7 +45,8 @@ export async function onRequestPost({ request, env }) {
     const includeVnLocal = body.include_vn_local !== false;
     const newsLimit = clampInt(body.news_limit, 3, 30, 10);
 
-    const priceBundle = await fetchPriceBundle({ symbol, market, lookbackDays, env });
+    const rawPriceBundle = await fetchPriceBundle({ symbol, market, lookbackDays, env });
+    const priceBundle = enrichInstrumentMeta(rawPriceBundle, market);
     if (!priceBundle || priceBundle.history.length < 40) {
       return json(
         {
@@ -113,7 +119,7 @@ export async function onRequestPost({ request, env }) {
         requested_symbol: symbol,
         name: priceBundle.name,
         exchange: priceBundle.exchange,
-        market,
+        market: detectMarketFromSymbol(priceBundle.resolvedSymbol, market),
         currency: priceBundle.currency,
         asset_type: detectAssetType(symbol)
       },
@@ -183,6 +189,10 @@ async function fetchPriceBundle({ symbol, market, lookbackDays, env }) {
   for (const candidate of candidates) {
     const yahoo = await fetchYahooHistory(candidate, lookbackDays);
     if (yahoo && yahoo.history.length >= 40) {
+      if (!isBundleMatchingMarket(yahoo, market)) {
+        notes.push(`Bo qua symbol ${yahoo.resolvedSymbol} vi khong khop thi truong ${market}.`);
+        continue;
+      }
       return {
         ...yahoo,
         notes,
@@ -208,6 +218,10 @@ async function fetchPriceBundle({ symbol, market, lookbackDays, env }) {
         market
       });
       if (alpha && alpha.history.length >= 40) {
+        if (!isBundleMatchingMarket(alpha, market)) {
+          notes.push(`Bo qua symbol ${alpha.resolvedSymbol} tu Alpha Vantage vi khong khop thi truong ${market}.`);
+          continue;
+        }
         notes.push("Dang dung du lieu du phong tu Alpha Vantage.");
         return {
           ...alpha,
@@ -227,6 +241,10 @@ async function fetchPriceBundle({ symbol, market, lookbackDays, env }) {
         market
       });
       if (td && td.history.length >= 40) {
+        if (!isBundleMatchingMarket(td, market)) {
+          notes.push(`Bo qua symbol ${td.resolvedSymbol} tu TwelveData vi khong khop thi truong ${market}.`);
+          continue;
+        }
         notes.push("Dang dung du lieu du phong tu TwelveData.");
         return {
           ...td,
@@ -249,12 +267,13 @@ function buildSymbolCandidates(symbol, market) {
   const out = new Set();
   if (market === "VN") {
     out.add(`${base}.VN`);
-    out.add(base);
+    out.add(`${base}.HN`);
   } else if (market === "US") {
     out.add(base);
   } else {
     if (isLikelyVietnamTicker(base)) {
       out.add(`${base}.VN`);
+      out.add(`${base}.HN`);
       out.add(base);
     } else {
       out.add(base);
@@ -267,6 +286,56 @@ function buildSymbolCandidates(symbol, market) {
 function isLikelyVietnamTicker(symbol) {
   const raw = cleanString(symbol).toUpperCase();
   return /^[A-Z]{3,4}$/.test(raw);
+}
+
+function isVietnamTickerSymbol(symbol) {
+  const raw = cleanString(symbol).toUpperCase();
+  return raw.endsWith(".VN") || raw.endsWith(".HN");
+}
+
+function isBundleMatchingMarket(bundle, market) {
+  if (!bundle) return false;
+  if (market === "AUTO") return true;
+
+  const resolved = cleanString(bundle.resolvedSymbol).toUpperCase();
+  const currency = cleanString(bundle.currency).toUpperCase();
+  if (market === "VN") {
+    return isVietnamTickerSymbol(resolved) || currency === "VND";
+  }
+  if (market === "US") {
+    return !isVietnamTickerSymbol(resolved) && currency !== "VND";
+  }
+  return true;
+}
+
+function baseSymbol(symbol) {
+  const raw = cleanString(symbol).toUpperCase();
+  if (!raw) return "";
+  return raw.split(/[.\-=]/)[0];
+}
+
+function looksLikeTickerName(name, symbol) {
+  const n = cleanString(name).toUpperCase();
+  const s = cleanString(symbol).toUpperCase();
+  return !n || n === s || n === baseSymbol(s);
+}
+
+function enrichInstrumentMeta(bundle, market) {
+  if (!bundle) return bundle;
+
+  const out = { ...bundle };
+  const resolved = cleanString(out.resolvedSymbol).toUpperCase();
+  const isVN = isVietnamTickerSymbol(resolved) || market === "VN";
+  if (!isVN) return out;
+
+  const code = baseSymbol(resolved);
+  const fallback = VN_COMPANY_FALLBACK[code];
+  if (!fallback) return out;
+
+  if (looksLikeTickerName(out.name, resolved)) out.name = fallback.name;
+  if (!cleanString(out.exchange)) out.exchange = fallback.exchange;
+  if (!cleanString(out.currency)) out.currency = "VND";
+  return out;
 }
 
 async function fetchYahooHistory(symbol, lookbackDays) {
@@ -1556,8 +1625,17 @@ function normalizeMarket(input) {
   return "AUTO";
 }
 
-function inferCurrency(symbol, market) {
-  if (market === "VN" || /\.VN$/i.test(symbol)) return "VND";
+function detectMarketFromSymbol(symbol, fallbackMarket = "AUTO") {
+  const raw = cleanString(symbol).toUpperCase();
+  if (isVietnamTickerSymbol(raw)) return "VN";
+  if (raw.endsWith("=X")) return "FX";
+  if (raw.includes("-USD")) return "CRYPTO";
+  if (fallbackMarket === "VN" || fallbackMarket === "US") return fallbackMarket;
+  return "US";
+}
+
+function inferCurrency(symbol) {
+  if (isVietnamTickerSymbol(symbol)) return "VND";
   return "USD";
 }
 

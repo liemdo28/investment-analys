@@ -720,22 +720,36 @@ function formatSignedNumber(value, digits = 2) {
 }
 
 function resolveMarketCode(instrument) {
-  const explicit = cleanText(instrument?.market).toUpperCase();
-  if (explicit === "VN" || explicit === "US") return explicit;
-
   const resolvedSymbol = cleanText(instrument?.symbol).toUpperCase();
   const requestedSymbol = cleanText(instrument?.requested_symbol).toUpperCase();
+  const explicit = cleanText(instrument?.market).toUpperCase();
 
-  if (resolvedSymbol.endsWith(".VN") || requestedSymbol.endsWith(".VN")) return "VN";
+  if (
+    resolvedSymbol.endsWith(".VN") ||
+    resolvedSymbol.endsWith(".HN") ||
+    requestedSymbol.endsWith(".VN") ||
+    requestedSymbol.endsWith(".HN")
+  ) {
+    return "VN";
+  }
   if (resolvedSymbol.endsWith("=X")) return "FX";
   if (resolvedSymbol.includes("-USD")) return "CRYPTO";
+  if (explicit === "VN" || explicit === "US" || explicit === "FX" || explicit === "CRYPTO") return explicit;
   return explicit || "AUTO";
 }
 
 function resolveCurrency(instrument, price) {
   const explicit = cleanText(instrument?.currency || price?.currency).toUpperCase();
-  const market = resolveMarketCode(instrument);
-  if (market === "VN") return "VND";
+  const resolvedSymbol = cleanText(instrument?.symbol).toUpperCase();
+  const requestedSymbol = cleanText(instrument?.requested_symbol).toUpperCase();
+  if (
+    resolvedSymbol.endsWith(".VN") ||
+    resolvedSymbol.endsWith(".HN") ||
+    requestedSymbol.endsWith(".VN") ||
+    requestedSymbol.endsWith(".HN")
+  ) {
+    return "VND";
+  }
   if (explicit) return explicit;
   return "USD";
 }
